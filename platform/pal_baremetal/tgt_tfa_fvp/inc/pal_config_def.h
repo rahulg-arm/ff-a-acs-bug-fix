@@ -63,7 +63,12 @@
  */
 
 /* Non-secure UART assigned to VM1 - PL011_UART2_BASE */
+#ifdef XEN_SUPPORT
+#define PLATFORM_NS_UART_BASE    0x22000000
+#else
 #define PLATFORM_NS_UART_BASE    0x1c0b0000
+#endif
+
 #define PLATFORM_NS_UART_SIZE    0x10000
 
 /* Secure UART assigned to SP1 - PL011_UART2_BASE */
@@ -119,6 +124,15 @@
 /*******************************************************************************
  * GIC-400 & interrupt handling related constants
  ******************************************************************************/
+#if defined(VM1_COMPILE) && defined(XEN_SUPPORT)
+/* Xen guest GIC memory map */
+#define GICD_BASE       0x03001000
+#define GICR_BASE       0x03020000
+#define GICC_BASE       0x03002000
+#define GICD_SIZE       0x10000
+#define GICR_SIZE       0x100000
+#define GICC_SIZE       0x2000
+#else
 /* Base FVP compatible GIC memory map */
 #define GICD_BASE       0x2f000000
 #define GICR_BASE       0x2f100000
@@ -126,6 +140,7 @@
 #define GICD_SIZE       0x10000
 #define GICR_SIZE       0x100000
 #define GICC_SIZE       0x2000
+#endif
 
 /* Non-secure EL1 physical timer interrupt */
 #define IRQ_PHY_TIMER_EL1           30

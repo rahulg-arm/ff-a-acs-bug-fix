@@ -8,10 +8,8 @@
 #include "val_framework.h"
 #include "val_interfaces.h"
 
-#ifdef TARGET_LINUX
 #define SKIP_NVM_PROGRAMMING
 #define SKIP_WD_PROGRAMMING
-#endif
 
 #if (PLATFORM_SP_EL == -1)
 #define SKIP_WD_PROGRAMMING
@@ -505,4 +503,145 @@ void val_reset_reboot_flag(void)
    {
       VAL_PANIC("nvm write failed");
    }
+}
+
+/**
+ *   @brief    - This function issues direct message to SP's
+                 to synhronise endpoint info table.
+ *   @param    - Void
+ *   @return   - Void
+**/
+#define VAL_ENDPOINT_INFO_SIZE 32
+
+void val_send_sync_ep_info(void)
+{
+    ffa_args_t args[2] = {0};
+    uint16_t count;
+    uint32_t i, j;
+
+    LOG(ALWAYS, "Size of val_endpoint_info_t: %lu bytes\n", sizeof(val_endpoint_info_t));
+
+    if (sizeof(val_endpoint_info_t) != VAL_ENDPOINT_INFO_SIZE)
+    {
+        VAL_PANIC("EP info struct size mismatch");
+    }
+
+    /* Sync EP Info for SP's and VM1 Only */
+    count = VAL_S_EP_COUNT + 1;
+
+    // Cast structure to a 32-bit pointer
+    val_endpoint_info_t *info_ptr = (val_endpoint_info_t *)val_get_endpoint_info();
+
+    for (i = 1; i <= VAL_S_EP_COUNT; i++)
+    {
+        for (j = 1; j <= count; j++)
+        {
+            // Fetch New EP Descriptor
+            uint32_t *ptr = (uint32_t *)&info_ptr[j];
+
+            val_memset(&args[0], 0, sizeof(ffa_args_t));
+            val_memset(&args[1], 0, sizeof(ffa_args_t));
+
+            // Keep Destination EP same for all "j" descriptors
+            args[0].arg1 = ((uint32_t)val_get_endpoint_id(VM1) << 16) | info_ptr[i].id;
+            args[1].arg1 = ((uint32_t)val_get_endpoint_id(VM1) << 16) | info_ptr[i].id;
+            args[0].arg2 = 0;
+            args[1].arg2 = 0;
+            args[0].arg3 = (j << 16) | EP_INFO_SYNC_SERVICE;
+            args[1].arg3 = (j << 16) | EP_INFO_SYNC_SERVICE;
+
+            // Copy data into ffa_args_t
+            args[0].arg4 = ptr[0];
+            args[0].arg5 = ptr[1];
+            args[0].arg6 = ptr[2];
+            args[0].arg7 = ptr[3];
+
+            args[1].arg4 = ptr[4];
+            args[1].arg5 = ptr[5];
+            args[1].arg6 = ptr[6];
+            args[1].arg7 = ptr[7];
+
+            val_ffa_msg_send_direct_req_32(&args[0]);
+            val_ffa_msg_send_direct_req_32(&args[1]);
+
+            if (args[0].fid == FFA_ERROR_32 || args[1].fid == FFA_ERROR_32)
+            {
+                LOG(ERROR, "Direct Request 32 failed err [0] %x [1] %x ",
+                    args[0].arg2, args[1].arg2);
+                VAL_PANIC("EP Sync Error");
+            }
+        }
+    }
+}
+
+/**
+ *   @brief    - This function issues direct message to SP's
+                 to synhronise endpoint info table.
+ *   @param    - Void
+ *   @return   - Void
+**/
+void val_sync_ep_info_service(ffa_args_t *args)
+{
+    ffa_args_t payload;
+    uint16_t count;
+    uint32_t *ptr;
+    val_endpoint_info_t ep_info;
+    val_endpoint_info_t *ep_table_ptr;
+    ffa_endpoint_id_t sender, receiver;
+    uint32_t i = (uint32_t) args->arg3 >> 16;
+
+    if (sizeof(val_endpoint_info_t) != VAL_ENDPOINT_INFO_SIZE)
+    {
+        VAL_PANIC("EP info struct size mismatch");
+    }
+
+    sender = args->arg1 & 0x0000FFFF;
+    receiver = (args->arg1 & 0xFFFF0000) >> 16;
+    ptr = (uint32_t *) &ep_info;
+    ep_table_ptr = val_get_endpoint_info();
+    (void)count;
+
+    // Copy data into ffa_args_t
+    ptr[0] = (uint32_t) args->arg4;
+    ptr[1] = (uint32_t) args->arg5;
+    ptr[2] = (uint32_t) args->arg6;
+    ptr[3] = (uint32_t) args->arg7;
+
+    val_memset(&payload, 0, sizeof(ffa_args_t));
+    payload.arg1 = ((uint32_t)(sender << 16) | receiver);
+    payload.arg2 = 0;
+    val_ffa_msg_send_direct_resp_32(&payload);
+    if (payload.fid == FFA_ERROR_32)
+    {
+        LOG(ERROR, "Direct Resp 32 failed err [0] %x [1] %x ", payload.arg2);
+        VAL_PANIC("EP Sync Resp Error");
+    }
+
+    ptr[4] = (uint32_t) payload.arg4;
+    ptr[5] = (uint32_t) payload.arg5;
+    ptr[6] = (uint32_t) payload.arg6;
+    ptr[7] = (uint32_t) payload.arg7;
+
+    LOG(DBG, "val_endpoint_info.i %x", i);
+    LOG(DBG, "val_endpoint_info.name %s %s", ep_info.name, ep_table_ptr[i].name);
+    val_memcpy(ep_table_ptr[i].name, ep_info.name, 5);
+    LOG(DBG, "val_endpoint_info.id %x %x ", ep_info.id, ep_table_ptr[i].id);
+    ep_table_ptr[i].id = ep_info.id;
+    LOG(DBG, "val_endpoint_info.tg0 %x %x", ep_info.tg0,  ep_table_ptr[i].tg0);
+    ep_table_ptr[i].tg0 = ep_info.tg0;
+    LOG(DBG, "val_endpoint_info.el_info %x %x", ep_info.el_info, ep_table_ptr[i].el_info);
+    ep_table_ptr[i].el_info = ep_info.el_info;
+    LOG(DBG, "val_endpoint_info.ec_count %x %x", ep_info.ec_count, ep_table_ptr[i].ec_count);
+    ep_table_ptr[i].ec_count = ep_info.ec_count;
+    LOG(DBG, "val_endpoint_info.ep_properties %x %x", ep_info.ep_properties,
+                                                        ep_table_ptr[i].ep_properties);
+    ep_table_ptr[i].ep_properties = ep_info.ep_properties;
+    LOG(DBG, "val_endpoint_info.uuid[0] %x %x", ep_info.uuid[0],  ep_table_ptr[i].uuid[0]);
+    ep_table_ptr[i].uuid[0] = ep_info.uuid[0];
+    LOG(DBG, "val_endpoint_info.uuid[1] %x %x", ep_info.uuid[1],  ep_table_ptr[i].uuid[1]);
+    ep_table_ptr[i].uuid[1] = ep_info.uuid[1];
+    LOG(DBG, "val_endpoint_info.uuid[2] %x %x", ep_info.uuid[2],  ep_table_ptr[i].uuid[2]);
+    ep_table_ptr[i].uuid[2] = ep_info.uuid[2];
+    LOG(DBG, "val_endpoint_info.uuid[3] %x %x", ep_info.uuid[3],  ep_table_ptr[i].uuid[3]);
+    ep_table_ptr[i].uuid[3] = ep_info.uuid[3];
 }

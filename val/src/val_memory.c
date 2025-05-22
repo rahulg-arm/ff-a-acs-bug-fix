@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -8,6 +8,9 @@
 #include "val_memory.h"
 #include "val_framework.h"
 #include "val_interfaces.h"
+#if defined(VM1_COMPILE) && defined(XEN_SUPPORT)
+#include <xen/public/xen.h>
+#endif
 
 #define min(a, b) (a < b)?a:b
 
@@ -353,6 +356,9 @@ static uint32_t val_map_endpoint_region(pgt_descriptor_t pgt_desc)
     {EP_RODATA_START, EP_RODATA_START, (EP_RODATA_END - EP_RODATA_START), ATTR_RO_DATA},
     {EP_DATA_START, EP_DATA_START, (EP_DATA_END - EP_DATA_START), ATTR_RW_DATA},
     {EP_BSS_START, EP_BSS_START, (EP_BSS_END - EP_BSS_START), ATTR_RW_DATA},
+#if defined(VM1_COMPILE) && defined(XEN_SUPPORT)
+    {GUEST_MAGIC_BASE, GUEST_MAGIC_BASE, GUEST_MAGIC_SIZE, ATTR_RW_DATA},
+#endif
     };
 
     /* Map Image regions */

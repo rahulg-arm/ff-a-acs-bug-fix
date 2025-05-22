@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024, Arm Limited or its affiliates. All rights reserved.
+ * Copyright (c) 2021-2025, Arm Limited or its affiliates. All rights reserved.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -51,8 +51,21 @@ exit_loop_\op:
 .endm
 
 val_entry:
+    b _start
+    .long   0                       /* Executable code */
+    .quad   0x0                     /* Image load offset from start of RAM */
+    .quad   __BSS_END__ - _start    /* Effective Image size */
+    .quad   0xe                     /* little endian, 4K page */
+    .quad   0                       /* reserved */
+    .quad   0                       /* reserved */
+    .quad   0                       /* reserved */
+    .byte   0x41                    /* Magic number, "ARM\x64" */
+    .byte   0x52
+    .byte   0x4d
+    .byte   0x64
+    .long   0                       /* reserved */
 
-
+_start:
    /* Install vector table */
     adr     x0, vector_table
 #if defined(VM1_COMPILE) && (PLATFORM_NS_HYPERVISOR_PRESENT == 0)
